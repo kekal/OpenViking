@@ -276,6 +276,11 @@ class VLMFactory:
 
             return OpenAIVLM(config)
 
+        elif provider == "claude-code":
+            from .backends.claude_code_vlm import ClaudeCodeVLM
+
+            return ClaudeCodeVLM(config)
+
         else:
             from .backends.litellm_vlm import LiteLLMVLMProvider
 

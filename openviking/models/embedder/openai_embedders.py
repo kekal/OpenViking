@@ -236,6 +236,12 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
             RuntimeError: When API call fails
         """
         try:
+            # Truncate to stay within model context limits (nomic-embed-text: 8192 tokens)
+            # Code tokenizes at ~2-3 chars/token, so 4000 chars ≈ 2000 tokens (safe margin)
+            max_chars = 4000
+            if len(text) > max_chars:
+                text = text[:max_chars]
+
             kwargs: Dict[str, Any] = {"input": text, "model": self.model_name}
 
             extra_body = self._build_extra_body(is_query=is_query)
@@ -269,6 +275,10 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
             return []
 
         try:
+            # Truncate each text to stay within model context limits (nomic-embed-text: 8192 tokens)
+            max_chars = 4000
+            texts = [t[:max_chars] if len(t) > max_chars else t for t in texts]
+
             kwargs: Dict[str, Any] = {"input": texts, "model": self.model_name}
             if self.dimension:
                 kwargs["dimensions"] = self.dimension

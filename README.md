@@ -1,3 +1,8 @@
+## This fork uses the local Claude CLI as the VLM and can use local small models like nomic-embed-text for vectorising.
+
+Look into [examples](https://github.com/kekal/OpenViking/tree/main/examples/claude-code)
+
+#     ↓ ↓ ↓ ↓ ↓ ↓ ↓
 <div align="center">
 
 <a href="https://openviking.ai/" target="_blank">

@@ -832,12 +832,20 @@ class SemanticProcessor(DequeueHandlerBase):
         return "\n".join(content_lines).strip()
 
     def _enforce_size_limits(self, overview: str, abstract: str) -> Tuple[str, str]:
-        """Enforce max size limits on overview and abstract."""
+        """Soft size limits — rely on prompt instructions for length control.
+
+        The prompts already specify word counts (50-150 for abstract paragraph,
+        400-800 for overview). Hard truncation cuts mid-sentence and degrades
+        quality. Only truncate at extreme outliers (2x the configured limit)
+        to catch runaway responses.
+        """
         semantic = get_openviking_config().semantic
-        if len(overview) > semantic.overview_max_chars:
-            overview = overview[: semantic.overview_max_chars]
-        if len(abstract) > semantic.abstract_max_chars:
-            abstract = abstract[: semantic.abstract_max_chars - 3] + "..."
+        hard_limit_overview = semantic.overview_max_chars * 2
+        hard_limit_abstract = semantic.abstract_max_chars * 2
+        if len(overview) > hard_limit_overview:
+            overview = overview[: hard_limit_overview]
+        if len(abstract) > hard_limit_abstract:
+            abstract = abstract[: hard_limit_abstract - 3] + "..."
         return overview, abstract
 
     def _parse_overview_md(self, overview_content: str) -> Dict[str, str]:

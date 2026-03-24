@@ -1,0 +1,177 @@
+# Project — Claude Instructions
+
+## OpenViking Knowledge Base
+
+This project is indexed in OpenViking (http://localhost:1933).
+Viking holds the full codebase with semantic summaries and vector search.
+CLI tool: `ov`. API: `http://localhost:1933`.
+
+### Context loading — progressive approach
+
+When exploring unfamiliar code, prefer Viking over cold file reads:
+
+1. **Search** — `find` (semantic), `search` (VLM-powered), or `grep` (exact match) to locate relevant URIs
+2. **Abstract** — L0 one-sentence summary (~100 tokens) — cheapest relevance check
+3. **Overview** — L1 structured overview (~2k tokens) — read before loading full content
+4. **Read** — L2 full content — only when overview confirms relevance
+
+### When NOT to use Viking
+
+- **Known file path** — just use Read/Edit directly, no need to search
+- **Single-file quick edits** — direct file access is faster
+- **Exact file name known** — use Glob/Grep on the filesystem
+
+Viking is for **discovery** — finding where something lives, understanding unfamiliar modules, getting oriented in the codebase.
+
+### Tips
+
+- Use `depth=1` for tree on large directories, then drill into subdirectories
+- Use `target_uri` to scope searches and avoid results from unrelated subtrees
+- Some file abstracts may be empty — fall back to overview for those files
+- Overviews for very large directories may be truncated. In this case drill into subdirs.
+
+---
+
+## Viking API reference
+
+Base URL: `http://localhost:1933`
+
+### Search
+
+```bash
+# Semantic search (natural language)
+curl -s -X POST http://localhost:1933/api/v1/search/find \
+  -H "Content-Type: application/json" \
+  -d '{"query": "<natural language query>", "limit": 5}'
+
+# Scoped to subtree (avoids noise from unrelated modules)
+curl -s -X POST http://localhost:1933/api/v1/search/find \
+  -H "Content-Type: application/json" \
+  -d '{"query": "<query>", "target_uri": "viking://resources/<project>/src", "limit": 5}'
+
+# VLM-powered search (multi-query expansion, best for complex questions)
+curl -s -X POST http://localhost:1933/api/v1/search/search \
+  -H "Content-Type: application/json" \
+  -d '{"query": "<complex question>", "uri": "viking://resources/<project>"}'
+
+# Exact text search (requires uri)
+curl -s -X POST http://localhost:1933/api/v1/search/grep \
+  -H "Content-Type: application/json" \
+  -d '{"pattern": "<symbol or text>", "uri": "viking://resources/<project>"}'
+
+# Glob pattern search (find files by name pattern)
+curl -s -X POST http://localhost:1933/api/v1/search/glob \
+  -H "Content-Type: application/json" \
+  -d '{"pattern": "**/*Service*.ts", "uri": "viking://resources/<project>"}'
+```
+
+### Filesystem
+
+```bash
+# List directory
+curl -s "http://localhost:1933/api/v1/fs/ls?uri=viking://resources/<project>"
+
+# Directory tree (use depth=1 for large dirs, drill into subdirs)
+curl -s "http://localhost:1933/api/v1/fs/tree?uri=viking://resources/<project>&depth=1"
+
+# Resource metadata
+curl -s "http://localhost:1933/api/v1/fs/stat?uri=viking://resources/<project>/src"
+```
+
+### Content (progressive loading)
+
+```bash
+# L0 abstract (~100 tokens)
+curl -s "http://localhost:1933/api/v1/content/abstract?uri=<viking-uri>"
+
+# L1 overview (~2k tokens)
+curl -s "http://localhost:1933/api/v1/content/overview?uri=<viking-uri>"
+
+# L2 full content
+curl -s "http://localhost:1933/api/v1/content/read?uri=<viking-uri>"
+
+# Re-index specific file/dir after changes
+curl -s -X POST http://localhost:1933/api/v1/content/reindex \
+  -H "Content-Type: application/json" \
+  -d '{"uri": "<viking-uri>", "regenerate": true, "wait": true}'
+```
+
+### Observer (diagnostics)
+
+```bash
+curl -s http://localhost:1933/api/v1/observer/queue        # processing queue
+curl -s http://localhost:1933/api/v1/observer/vlm          # VLM status
+curl -s http://localhost:1933/api/v1/observer/system       # system metrics
+```
+
+### Status
+
+```bash
+curl -s http://localhost:1933/health
+```
+
+---
+
+## Viking CLI commands (`ov`)
+
+Use `ov` CLI for operations that don't have a simple curl equivalent:
+
+```bash
+# One-shot memory save (no session needed)
+ov add-memory "<text>"
+
+# Relations between resources
+ov relations <viking-uri>
+ov link <from-uri> <to-uri> --reason "..."
+ov unlink <from-uri> <to-uri>
+
+# Export / Import knowledge base
+ov export <viking-uri> <local-file>
+ov import <local-file> <target-uri>
+
+# Session management
+ov session new
+ov session list
+ov session get <session-id>
+ov session commit <session-id>
+ov session delete <session-id>
+
+# Force delete resource
+ov rm -r <viking-uri>
+
+# Formatted status
+ov status
+ov wait --timeout 120
+```
+
+---
+
+## Viking URI reference
+
+```
+viking://resources/<project>/            <- indexed codebase
+viking://user/memories/                  <- persistent user preferences, decisions
+viking://agent/memories/                 <- persistent agent cases and patterns
+viking://session/<session-id>/           <- ephemeral shared session (deleted after commit)
+```
+
+---
+
+## Session lifecycle
+
+### Single-agent
+
+1. **START** — health check, search past memories
+2. **DURING** — use Viking for discovery, save quick insights with `ov add-memory`
+3. **END** — commit session or use finish-session script
+
+### Multi-agent coordination
+
+All agents on the same task share **one Viking session**. See `viking-multiagent` skill.
+
+1. **START** — search past memories, create shared session, each agent registers
+2. **DURING** — agents add decisions and progress as messages to the shared session
+3. **END** — commit session (Viking extracts persistent memories), then delete session
+
+**Task switching:** Commit + delete current session. Create new session for new task.
+Past memories are searchable from the new session.
